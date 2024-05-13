@@ -1,4 +1,13 @@
 const { chromium } = require('playwright');
+const admin = require('firebase-admin');
+const serviceAccount = require('./serviceAccountKey.json');
+
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+});
+const db = admin.firestore();
+
+
 
 (async () => {
     const browser = await chromium.launch({ headless: false });
@@ -6,16 +15,15 @@ const { chromium } = require('playwright');
     await page.goto('https://www.tripstack.com/blog');
     await page.waitForLoadState('networkidle');
 
-    // Intelligent load (Dynamic waiting based on network activity)
+    // Dynamic waiting based on network activity
     let previousHeight, currentHeight;
     do {
         previousHeight = await page.evaluate('document.body.scrollHeight');
         await page.evaluate('window.scrollTo(0, document.body.scrollHeight)');
-        // Wait for network to idle or for a timeout to ensure loading has a chance to start
         await page.waitForLoadState('networkidle');
         currentHeight = await page.evaluate('document.body.scrollHeight');
         if (previousHeight === currentHeight) {
-            await page.waitForTimeout(1000);
+            await page.waitForTimeout(2000);
             currentHeight = await page.evaluate('document.body.scrollHeight');
         }
     } while (previousHeight !== currentHeight);
@@ -47,5 +55,33 @@ const { chromium } = require('playwright');
     });
 
     console.log(articles);
+
+    //Save to firebase
+    for (const article of articles) {
+        console.log('Saving article:', article.title);
+        try {
+            await saveArticle(article);
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
     await browser.close();
 })();
+
+
+// Important considerations at scale: race conditions, rate limiting, error handling, not using bulk upload
+async function saveArticle(article) {
+    const articlesRef = db.collection('articles');
+    const snapshot = await articlesRef.where('url', '==', article.url).limit(1).get();
+
+    if (snapshot.empty) {
+        const newArticleRef = articlesRef.doc();
+        await newArticleRef.set(article);
+        console.log('New article saved with ID:', newArticleRef.id);
+    } else {
+        const doc = snapshot.docs[0];
+        await doc.ref.update(article);
+        console.log('Article updated with ID:', doc.id);
+    }
+}
