@@ -14,7 +14,7 @@ const db = admin.firestore();
     const page = await browser.newPage();
     await page.goto('https://www.tripstack.com/blog');
     await page.waitForLoadState('networkidle');
-
+    
     // Dynamic waiting based on network activity
     let previousHeight, currentHeight;
     do {
@@ -58,7 +58,6 @@ const db = admin.firestore();
 
     //Save to firebase
     for (const article of articles) {
-        console.log('Saving article:', article.title);
         try {
             await saveArticle(article);
         } catch (error) {
